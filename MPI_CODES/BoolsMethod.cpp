@@ -13,6 +13,7 @@ vector<double> calculatePartitions(int a, int b, int n)
 {
     vector<double> Partitions_Array(n + 1);
     // difference between two partitions : h
+    int k = (n / 4);
     double h = (b - a) / static_cast<double>(n); // casting for double
     Partitions_Array[0] = a;                     // 1st partition element
     for (int i = 1; i <= n; i++)
@@ -20,12 +21,6 @@ vector<double> calculatePartitions(int a, int b, int n)
         // for loop for: x0 = a, x1=x0+h, x2=x1+2h, x3=x2+3h, x4=x3+4h
         Partitions_Array[i] = a + i * h;
     }
-    cout << "Partition Array:: [";
-    for (double partition : Partitions_Array)
-    {
-        cout << partition << " ";
-    }
-    cout << "]" << endl;
     return Partitions_Array;
 }
 
@@ -40,13 +35,7 @@ double boolsIntegration(int a, int b, int n, int begin, int to, double h)
     for (int i = begin; i < k; i++)
     {
         // int xi = a + i * h;
-        double x0 = a + i * 4 * h;
-        double x1 = x0 + h;
-        double x2 = x0 + 2 * h;
-        double x3 = x0 + 3 * h;
-        double x4 = x0 + 4 * h;
-
-        sum = sum + (7 * function_X(x0) + 32 * function_X(x1) + 12 * function_X(x2) + 32 * function_X(x3) + 7 * function_X(x4));
+        sum = sum + (7 * function_X(partitions[4 * i]) + 32 * function_X(partitions[4 * i + 1]) + 12 * function_X(partitions[4 * i + 2]) + 32 * function_X(partitions[4 * i + 3]) + 7 * function_X(partitions[4 * i + 4]));
     }
     return (2 * h / 45.0) * sum; // Apply Boole's Rule formula
 }
@@ -90,6 +79,16 @@ int main(int argc, char **argv)
             MPI_Recv(&temp_result, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             Global_Result += temp_result;
         }
+
+        FILE *outputFile;
+        // writing the result to the output file
+        outputFile = fopen("output2.txt", "w");
+        if (outputFile == NULL)
+        {
+            perror("error while opening the o/p file");
+            exit(1);
+        }
+        fprintf(outputFile, "Booles Rule result::%f\n", Global_Result);
 
         cout << "Booles Rule result::" << Global_Result << endl;
     }
