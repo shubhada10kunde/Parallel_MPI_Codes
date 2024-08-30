@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <mpi.h>
+#include <fstream>
 using namespace std;
 
 int main(int argc, char **argv)
@@ -10,70 +11,60 @@ int main(int argc, char **argv)
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    int n;
-    if (rank == 0)
-    {
-        cout << "Enter size";
-        cin >> n;
-    }
-
-    // Broadcast matrix size to all processes
-    MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-    int rows_per_processor = n / nproc;
-    if (n % nproc != 0)
-    {
-        if (rank == 0)
-        {
-            cout << "Matrix size is not divisible by number of processes." << endl;
-        }
-        exit(1);
-    }
+    int n = 4;
+    int k = n / nproc;
 
     // Define global matrix and vector on rank 0
     // Defining n*n matrix
     vector<vector<int>> matrix_A(n, vector<int>(n));
     // Defining n*1 vector
     vector<int> vect_X(n);
-    vector<int> AnsY_Mat(n);
+    vector<int> AnsY_Mat(n, 0);
 
     // local storage for each processor
-    vector<int> local_matrix(n * rows_per_processor);
-    vector<int> local_YMat(rows_per_processor, 0); // Defining local y matrix
-    vector<int> local_vector(n / nproc);
+    vector<int> local_matrix(n * k);
+    vector<int> local_vector(k);
+    vector<int> local_YMat(k, 0); // Defining local y matrix
 
     if (rank == 0)
     {
-        cout << "enter matrix elements" << endl;
+        // Reading matrix and vector from file
+        ifstream input_file("matrix.txt");
+        if (!input_file)
+        {
+            cerr << "Error opening input file!" << endl;
+            exit(1);
+        }
+
         for (int i = 0; i < n; ++i)
         {
             for (int j = 0; j < n; ++j)
             {
-                cin >> matrix_A[i][j];
+                input_file >> matrix_A[i][j];
             }
         }
 
-        cout << "matrix is" << endl;
-        for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; ++j)
         {
-            for (int j = 0; j < n; j++)
+            input_file >> vect_X[j];
+        }
+        input_file.close();
+
+        // Print matrix and vector (for debugging purposes)
+        cout << "Matrix A:" << endl;
+        for (const auto &row : matrix_A)
+        {
+            for (int val : row)
             {
-                cout << matrix_A[i][j] << " ";
+                cout << val << " ";
             }
             cout << endl;
         }
 
-        cout << "enter vector elements" << endl;
-
-        for (int j = 0; j < n; j++)
+        cout << "Vector X:" << endl;
+        for (int val : vect_X)
         {
-            cin >> vect_X[j];
-        }
-
-        cout << "X vector is" << endl;
-        for (int j = 0; j < n; j++)
-        {
-            cout << vect_X[j] << " ";
+            cout << val << " ";
         }
         cout << endl;
     }
@@ -89,44 +80,51 @@ int main(int argc, char **argv)
                 temp_matrix[i * n + j] = matrix_A[i][j];
             }
         }
-        MPI_Scatter(temp_matrix.data(), n * rows_per_processor, MPI_INT, local_matrix.data(), n * rows_per_processor, MPI_INT, 0, MPI_COMM_WORLD);
-
-        // Scatter the vector to all processes
-        MPI_Scatter(vect_X.data(), n / nproc, MPI_INT, local_vector.data(), n / nproc, MPI_INT, 0, MPI_COMM_WORLD);
     }
 
-    else
-    {
-        // Scatter matrix rows and vector
-        MPI_Scatter(nullptr, 0, MPI_INT, local_matrix.data(), rows_per_processor * n, MPI_INT, 0, MPI_COMM_WORLD);
-        MPI_Scatter(nullptr, 0, MPI_INT, local_vector.data(), n / nproc, MPI_INT, 0, MPI_COMM_WORLD);
-    }
+    MPI_Scatter(temp_matrix.data(), n * k, MPI_INT, local_matrix.data(), n * k, MPI_INT, 0, MPI_COMM_WORLD);
+
+    // Scatter the vector to all processes
+    MPI_Scatter(vect_X.data(), k, MPI_INT, local_vector.data(), k, MPI_INT, 0, MPI_COMM_WORLD);
+
+    vector<int> gathered_vector(n);
+    MPI_Allgather(&local_vector, k, MPI_INT, &gathered_vector, k, MPI_INT, MPI_COMM_WORLD);
 
     // matrix vector multiplication
-    for (int i = 0; i < rows_per_processor; i++)
+    for (int i = 0; i < k; i++)
     {
         local_YMat[i] = 0;
         for (int j = 0; j < n; j++)
         {
-            local_YMat[i] += local_matrix[i * n + j] * local_vector[j];
+            local_YMat[i] += local_matrix[i * n + j] * gathered_vector[j];
         }
     }
 
-    // vector<int> gathered_vector(rows_per_processor);
-    // Gather results on root process
-    // MPI_Allgather(&local_vector_rows, rows_per_processor, MPI_INT, &AnsY_Mat, rows_per_processor, MPI_INT, MPI_COMM_WORLD);
-
-    // ans vector // gathering results on root process i.e 0th;
-    MPI_Gather(local_YMat.data(), rows_per_processor, MPI_INT, AnsY_Mat.data(), rows_per_processor, MPI_INT, 0, MPI_COMM_WORLD);
+    // gathering results on root process i.e 0th;
+    MPI_Gather(&local_YMat, k, MPI_INT, &AnsY_Mat, k, MPI_INT, 0, MPI_COMM_WORLD);
 
     if (rank == 0)
     {
-        cout << "Resultant Y vector is:" << endl;
-        for (int i = 0; i < n; i++)
+        // Write result to output file
+        ofstream output_file("output3.txt");
+        if (!output_file)
         {
-            cout << AnsY_Mat[i] << " ";
+            cerr << "Error opening output file!" << endl;
+            exit(1);
         }
-        cout << endl;
+
+        output_file << "Resultant Y vector:" << endl;
+        for (int val : AnsY_Mat)
+        {
+            output_file << val << " ";
+        }
+        output_file << endl;
+        output_file.close();
+
+        for (int i = 0; i < n; ++i)
+        {
+            cout << "Resultant Y vector:" << i << " is " << AnsY_Mat[i] << endl;
+        }
     }
 
     MPI_Finalize();
