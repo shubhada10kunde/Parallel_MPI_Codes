@@ -15,21 +15,19 @@ int main(int argc, char **argv)
     int k = n / nproc;
 
     // Define global matrix and vector on rank 0
-    // Defining n*n matrix
-    vector<vector<int>> matrix_A(n, vector<int>(n));
-    // Defining n*1 vector
-    vector<int> vect_X(n);
-    vector<int> AnsY_Mat(n, 0);
+    vector<int> matrix_A(n * n); // Defining n*n matrix
+    vector<int> vect_X(n);       // Defining n*1 vector
+    vector<int> AnsY_Mat(n);     // Gathered results
 
     // local storage for each processor
-    vector<int> local_matrix(n * k);
-    vector<int> local_vector(k);
-    vector<int> local_YMat(k, 0); // Defining local y matrix
+    vector<int> local_matrix(n * k); // Buffer for scattered matrix
+    vector<int> local_vector(k);     // Buffer for scattered vector
+    vector<int> local_YMat(k);       // Result of matrix-vector multiplication
 
     if (rank == 0)
     {
         // Reading matrix and vector from file
-        ifstream input_file("matrix.txt");
+        ifstream input_file("Inputmatrix.txt");
         if (!input_file)
         {
             cerr << "Error opening input file!" << endl;
@@ -40,7 +38,7 @@ int main(int argc, char **argv)
         {
             for (int j = 0; j < n; ++j)
             {
-                input_file >> matrix_A[i][j];
+                input_file >> matrix_A[i * n + j];
             }
         }
 
@@ -50,47 +48,52 @@ int main(int argc, char **argv)
         }
         input_file.close();
 
-        // Print matrix and vector (for debugging purposes)
         cout << "Matrix A:" << endl;
-        for (const auto &row : matrix_A)
+        for (int i = 0; i < n; ++i)
         {
-            for (int val : row)
+            for (int j = 0; j < n; ++j)
             {
-                cout << val << " ";
+                cout << matrix_A[i * n + j] << " ";
             }
             cout << endl;
         }
 
         cout << "Vector X:" << endl;
-        for (int val : vect_X)
+        for (int j = 0; j < n; ++j)
         {
-            cout << val << " ";
+            cout << vect_X[j] << " ";
         }
         cout << endl;
     }
 
     // scatter matrix rows to all processors
-    vector<int> temp_matrix(n * n);
-    if (rank == 0)
-    {
-        for (int i = 0; i < n; i++)
-        {
-            for (int j = 0; j < n; j++)
-            {
-                temp_matrix[i * n + j] = matrix_A[i][j];
-            }
-        }
-    }
-
-    MPI_Scatter(temp_matrix.data(), n * k, MPI_INT, local_matrix.data(), n * k, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatter(matrix_A.data(), n * k, MPI_INT, local_matrix.data(), n * k, MPI_INT, 0, MPI_COMM_WORLD);
+    // cout << rank << endl;
+    // for (int i = 0; i < n * k; i++)
+    // {
+    //     cout << local_matrix[i];
+    // }
+    // cout << endl;
 
     // Scatter the vector to all processes
     MPI_Scatter(vect_X.data(), k, MPI_INT, local_vector.data(), k, MPI_INT, 0, MPI_COMM_WORLD);
+    // cout << rank << endl;
+    // for (int i = 0; i < k; i++)
+    // {
+    //     cout << local_vector[i];
+    // }
+    // cout << endl;
 
     vector<int> gathered_vector(n);
-    MPI_Allgather(&local_vector, k, MPI_INT, &gathered_vector, k, MPI_INT, MPI_COMM_WORLD);
+    MPI_Allgather(local_vector.data(), k, MPI_INT, gathered_vector.data(), k, MPI_INT, MPI_COMM_WORLD);
+    // cout << rank << endl;
+    // for (int i = 0; i < k; i++)
+    // {
+    //     cout << gathered_vector[i];
+    // }
+    // cout << endl;
 
-    // matrix vector multiplication
+    // // matrix vector multiplication
     for (int i = 0; i < k; i++)
     {
         local_YMat[i] = 0;
@@ -101,7 +104,13 @@ int main(int argc, char **argv)
     }
 
     // gathering results on root process i.e 0th;
-    MPI_Gather(&local_YMat, k, MPI_INT, &AnsY_Mat, k, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gather(local_YMat.data(), k, MPI_INT, AnsY_Mat.data(), k, MPI_INT, 0, MPI_COMM_WORLD);
+    cout << rank << endl;
+    for (int i = 0; i < k; i++)
+    {
+        cout << AnsY_Mat[i];
+    }
+    cout << endl;
 
     if (rank == 0)
     {
@@ -113,10 +122,10 @@ int main(int argc, char **argv)
             exit(1);
         }
 
-        output_file << "Resultant Y vector:" << endl;
-        for (int val : AnsY_Mat)
+        output_file << "Resultant answer vector:" << endl;
+        for (int i = 0; i < n; ++i)
         {
-            output_file << val << " ";
+            output_file << AnsY_Mat[i] << endl;
         }
         output_file << endl;
         output_file.close();
