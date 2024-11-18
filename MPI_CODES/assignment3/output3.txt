@@ -1,0 +1,6 @@
+Resultant answer vector:
+18
+31
+27
+54
+
